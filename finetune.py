@@ -96,10 +96,14 @@ def main():
     #training_args = TrainingArguments(output_dir="pythia-6.7b", evaluation_strategy="epoch")
     training_args = parser.parse_args_into_dataclasses()[0]
     set_seed(training_args.seed)
-    model = GPTNeoXForCausalLM.from_pretrained("EleutherAI/pythia-1.3b")
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-1.3b")
+    # model = GPTNeoXForCausalLM.from_pretrained("EleutherAI/pythia-1.3b")
+    model = GPTNeoXForCausalLM.from_pretrained("EleutherAI/gpt-neox-20b")
+    # tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-1.3b")
+    
+    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")    
     tokenizer.pad_token = tokenizer.mask_token
-    max_positions = 8192
+    # max_positions = 8192
+    max_positions = 2048    
     tokenizer.model_max_length = max_positions
     for each in model.gpt_neox.layers:
         original_emb = each.attention.rotary_emb
@@ -149,21 +153,32 @@ def main():
     #)
 
     base_url = "https://the-eye.eu/public/AI/pile/"
-    data_files = {
-        "train": [base_url + "train/"+ f"{idx:02d}.jsonl.zst" for idx in range(30)],
-        "validation": base_url + "val.jsonl.zst",
-        "test": base_url + "test.jsonl.zst",
-    }
-    datasets = load_dataset("json", data_files=data_files, streaming=True)
-    datasets = datasets.filter(lambda x: len(x["text"])>=max_positions)
-    tokenized_datasets = datasets.map(
-        lambda examples: tokenizer(examples["text"]),
-        batched=True,
-    )
+    # data_files = {
+    #     "train": [base_url + "train/"+ f"{idx:02d}.jsonl.zst" for idx in range(30)],
+    #     "validation": base_url + "val.jsonl.zst",
+    #     "test": base_url + "test.jsonl.zst",
+    # }
+    # datasets = load_dataset("json", data_files=data_files, streaming=True)
+    # datasets = datasets.filter(lambda x: len(x["text"])>=max_positions)
+    # tokenized_datasets = datasets.map(
+    #     lambda examples: tokenizer(examples["text"]),
+    #     batched=True,
+    # )
+    # lm_datasets = tokenized_datasets.map(
+    #     group_texts,
+    #     batched=True,
+    # )
+    # lm_datasets = lm_datasets.filter(lambda x: len(x["input_ids"])>=max_positions)
+    
+    datasets = load_dataset('json', data_files='/nvmedata/changranh/domain_chatgpt/data/train_1_of_32.json', field="data")    
+    tokenized_datasets = datasets
+    #import pdb; pdb.set_trace()
     lm_datasets = tokenized_datasets.map(
         group_texts,
         batched=True,
     )
+    #import pdb; pdb.set_trace()
+    #lm_datasets = tokenized_datasets
     lm_datasets = lm_datasets.filter(lambda x: len(x["input_ids"])>=max_positions)
     def preprocess_logits_for_metrics(logits, labels):
         if isinstance(logits, tuple):
@@ -172,7 +187,7 @@ def main():
             logits = logits[0]
         return logits.argmax(dim=-1)
 
-    metric = evaluate.load("accuracy")
+    metric = evaluate.load("accuracy")  
 
     def compute_metrics(eval_pred):
         preds, labels = eval_pred
@@ -181,12 +196,12 @@ def main():
         return metric.compute(predictions=preds, references=labels)
 
     train_dataset = lm_datasets["train"]
-    eval_dataset = lm_datasets["validation"]
+    # eval_dataset = lm_datasets["validation"]
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset= train_dataset,
-        eval_dataset= eval_dataset,
+        eval_dataset= None,
         tokenizer = tokenizer,
         data_collator=default_data_collator,
         compute_metrics=compute_metrics,
